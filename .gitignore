@@ -1,0 +1,15 @@
+# Binaries and build output
+*.exe
+*.out
+/bin/
+
+# Test & coverage artifacts
+coverage.out
+coverage.html
+*.test
+*.prof
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/

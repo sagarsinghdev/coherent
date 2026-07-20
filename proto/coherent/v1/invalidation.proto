@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+// Package coherent.v1 defines the wire contract for streaming cache-invalidation
+// events from an owner service to coherent consumers.
+package coherent.v1;
+
+option go_package = "github.com/OWNER/coherent/proto/coherent/v1;coherentv1";
+
+// InvalidationService streams invalidation events to subscribed consumers.
+service InvalidationService {
+  // Subscribe opens a server stream of invalidation events. The consumer sends
+  // its last-seen watermark as resume_after_ms so the server can replay missed
+  // events before resuming live delivery. The stream stays open until the client
+  // closes it or an error occurs; clients reconnect with backoff.
+  rpc Subscribe(SubscribeRequest) returns (stream InvalidationEvent);
+}
+
+message SubscribeRequest {
+  // subscriber_id is an opaque, stable identifier for this consumer connection,
+  // used for registry tracking and metrics. Recommended: "<service>-<pod>".
+  string subscriber_id = 1;
+
+  // resume_after_ms is the Unix-millisecond timestamp of the last event this
+  // consumer processed. 0 means a fresh connection with no replay.
+  int64 resume_after_ms = 2;
+
+  // namespace optionally scopes the subscription to one logical dataset when an
+  // owner serves several. Empty means all.
+  string namespace = 3;
+}
+
+message InvalidationEvent {
+  // key identifies the cache entry to evict. Empty when is_cache_clear is true.
+  string key = 1;
+
+  // event_type is an informational label: "created" | "updated" | "deleted".
+  string event_type = 2;
+
+  // timestamp_ms is the event's Unix-millisecond time. Consumers track the
+  // maximum seen value and send it as resume_after_ms on reconnect.
+  int64 timestamp_ms = 3;
+
+  // is_cache_clear instructs the consumer to flush its entire cache and re-fill
+  // lazily. Sent on (re)connection and on a detected retention gap; other fields
+  // are empty when it is true.
+  bool is_cache_clear = 4;
+}
