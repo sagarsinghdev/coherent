@@ -30,7 +30,7 @@ func NewMemorySource[K comparable](buffer int) *MemorySource[K] {
 }
 
 // Events returns the event stream. The stream closes when Close is called.
-func (s *MemorySource[K]) Events(ctx context.Context) <-chan Event[K] {
+func (s *MemorySource[K]) Events(_ context.Context) <-chan Event[K] {
 	return s.ch
 }
 

@@ -10,9 +10,14 @@ permissions:
 
 jobs:
   test:
+    name: test (${{ matrix.module }} · go ${{ matrix.go }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
+        # The core module is zero-dependency; the optional transports/backends
+        # are separate modules that depend on it via a replace directive.
+        module: ['.', 'contrib/otter', 'examples/grpc']
         go: ['1.24', 'stable'] # 'stable' always tracks the latest Go release
     steps:
       - uses: actions/checkout@v4
@@ -20,21 +25,35 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
           cache: true
+          cache-dependency-path: ${{ matrix.module }}/go.mod
       - name: Verify formatting
+        working-directory: ${{ matrix.module }}
         run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - name: Build
+        working-directory: ${{ matrix.module }}
+        run: go build ./...
       - name: Vet
+        working-directory: ${{ matrix.module }}
         run: go vet ./...
       - name: Test (race + coverage)
+        working-directory: ${{ matrix.module }}
         run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
 
   lint:
+    name: lint (${{ matrix.module }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ['.', 'contrib/otter', 'examples/grpc']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: 'stable'
           cache: true
+          cache-dependency-path: ${{ matrix.module }}/go.mod
       - uses: golangci/golangci-lint-action@v6
         with:
           version: latest
+          working-directory: ${{ matrix.module }}

@@ -1,53 +1,50 @@
 # Otter backend adapter
 
-The bundled `MemCache` uses a single lock, which is fine for moderate read concurrency but costs more
-under heavy multi-core contention. For lock-free scaling and adaptive W-TinyLFU admission, adapt
-[Otter v2](https://github.com/maypok86/otter) behind `coherent.Cache[K, V]`.
+An [Otter v2](https://github.com/maypok86/otter) implementation of `coherent.Cache[K, V]`. The bundled
+`MemCache` uses a single lock — fine for moderate read concurrency, but it costs more under heavy
+multi-core contention. This adapter swaps in Otter's lock-free, adaptive W-TinyLFU storage while
+keeping the invalidation `Handler`, sources, and server primitives unchanged.
 
-The adapter is intentionally *not* part of the core module (it would force the Otter dependency on
-everyone). Drop this into your own module, or a `contrib/otter` submodule with its own `go.mod`, and
-`go get github.com/maypok86/otter/v2`.
+It is a **separate module** so the core library stays dependency-free — only consumers that want Otter
+pull in the Otter dependency.
 
-> Verify signatures against the Otter version you pin — the sketch below targets the Otter v2 API and
-> may need small adjustments as Otter evolves.
+## Install
+
+```sh
+go get github.com/sagarsinghdev/coherent/contrib/otter
+```
+
+## Use
 
 ```go
-package otteradapter
-
 import (
     "time"
 
-    "github.com/maypok86/otter/v2"
-    "github.com/OWNER/coherent"
+    "github.com/sagarsinghdev/coherent"
+    otteradapter "github.com/sagarsinghdev/coherent/contrib/otter"
 )
 
-// Cache adapts an Otter cache to coherent.Cache[K, V].
-type Cache[K comparable, V any] struct {
-    c *otter.Cache[K, V]
+// maxEntries <= 0 is unbounded; ttl > 0 expires each entry that long after its
+// last write (matching MemCache's TTL semantics).
+cache, err := otteradapter.New[string, string](100_000, 5*time.Minute)
+if err != nil {
+    // handle
 }
 
-func New[K comparable, V any](maxEntries int, ttl time.Duration) *Cache[K, V] {
-    b := otter.Must(&otter.Options[K, V]{
-        MaximumSize:      maxEntries,
-        ExpiryCalculator: otter.ExpiryWriting[K, V](ttl), // TTL from last write; omit for none
-    })
-    return &Cache[K, V]{c: b}
-}
-
-func (a *Cache[K, V]) Get(key K) (V, bool) { return a.c.GetIfPresent(key) }
-func (a *Cache[K, V]) Set(key K, val V)    { a.c.Set(key, val) }
-func (a *Cache[K, V]) Delete(key K)        { a.c.Invalidate(key) }
-func (a *Cache[K, V]) Clear()              { a.c.InvalidateAll() }
-func (a *Cache[K, V]) Len() int            { return a.c.EstimatedSize() }
-```
-
-Use it exactly like `MemCache`:
-
-```go
-cache := otteradapter.New[string, string](100_000, 5*time.Minute)
-handler := coherent.NewHandler(cache, src, logger)
+handler := coherent.NewHandler(cache, src, nil)
 go handler.Run(ctx)
 ```
 
-Everything else — the invalidation `Handler`, sources, and server primitives — is unchanged. Only the
-storage layer swaps.
+Use it exactly like `MemCache` — everything above the storage layer is identical. For full control
+over Otter (weighers, stats, custom expiry), build the `*otter.Cache` yourself and pass it to
+`otteradapter.Wrap`.
+
+## API
+
+| Method | Backed by |
+|---|---|
+| `Get(key)` | `otter.Cache.GetIfPresent` |
+| `Set(key, value)` | `otter.Cache.Set` |
+| `Delete(key)` | `otter.Cache.Invalidate` (no-op on a missing key → idempotent invalidation) |
+| `Clear()` | `otter.Cache.InvalidateAll` |
+| `Len()` | `otter.Cache.EstimatedSize` (an estimate — Otter maintains size asynchronously) |

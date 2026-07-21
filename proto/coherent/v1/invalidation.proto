@@ -4,7 +4,7 @@ syntax = "proto3";
 // events from an owner service to coherent consumers.
 package coherent.v1;
 
-option go_package = "github.com/OWNER/coherent/proto/coherent/v1;coherentv1";
+option go_package = "github.com/sagarsinghdev/coherent/examples/grpc/gen/coherentv1;coherentv1";
 
 // InvalidationService streams invalidation events to subscribed consumers.
 service InvalidationService {

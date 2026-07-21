@@ -2,9 +2,9 @@
 
 **A local, in-process cache for Go that stays coherent across a fleet of processes.**
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/OWNER/coherent.svg)](https://pkg.go.dev/github.com/OWNER/coherent)
-[![CI](https://github.com/OWNER/coherent/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/coherent/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/OWNER/coherent)](https://goreportcard.com/report/github.com/OWNER/coherent)
+[![Go Reference](https://pkg.go.dev/badge/github.com/sagarsinghdev/coherent.svg)](https://pkg.go.dev/github.com/sagarsinghdev/coherent)
+[![CI](https://github.com/sagarsinghdev/coherent/actions/workflows/ci.yml/badge.svg)](https://github.com/sagarsinghdev/coherent/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/sagarsinghdev/coherent)](https://goreportcard.com/report/github.com/sagarsinghdev/coherent)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 > Go has great **local** caches (Otter, Ristretto) and great **distributed** caches (Redis).
@@ -32,10 +32,12 @@ channel**:
 ## Install
 
 ```sh
-go get github.com/OWNER/coherent
+go get github.com/sagarsinghdev/coherent
 ```
 
-*(Replace `OWNER` with the published module path.)*
+The core module is **zero-dependency** (standard library only). Optional transports and backends live
+in separate modules so they never add weight to the core: the gRPC streaming source in
+[`examples/grpc`](examples/grpc) and the Otter backend in [`contrib/otter`](contrib/otter).
 
 ## Quickstart
 
@@ -125,17 +127,22 @@ convenient. For high-concurrency production workloads, adapt a specialized cache
 
 ## Benchmarks
 
-`MemCache`, Apple M-series, `go test -bench`. Numbers are indicative; run `make bench` on your target.
+`MemCache` backend, Apple M2 Pro, Go 1.26. Numbers are indicative; reproduce with `make bench` (or
+`go test -run='^$' -bench=. -benchmem ./bench/`). Full methodology: [`bench/`](bench).
 
 | Benchmark | Time/op | Allocs/op |
 |---|---:|---:|
-| `Get` hit (single goroutine) | ~11 ns | 0 |
-| `Set` | ~14 ns | 0 |
-| `Get` hit (high parallel contention) | ~105 ns | 0 |
+| `Get` hit (single goroutine) | ~17.5 ns | 0 |
+| `Set` | ~19 ns | 0 |
+| `Get` hit (high parallel contention) | ~154 ns | 0 |
+| Invalidation apply (in-process, publish → evicted) | ~4.9 µs | 2 |
 
-The bundled `MemCache` uses a single lock, so heavy multi-core read contention costs more than a
-lock-free cache would; that's the tradeoff for a zero-dependency default. Adapt Otter (see
-`contrib/otter`) when you need lock-free scaling — `coherent`'s invalidation layer is unchanged.
+Local hits are tens of nanoseconds and allocation-free; invalidation apply is single-digit
+microseconds in-process (network transport adds its own RTT on top — still milliseconds versus a TTL
+measured in minutes). The bundled `MemCache` uses a single lock, so heavy multi-core read contention
+costs more than a lock-free cache would; that's the tradeoff for a zero-dependency default. Adapt
+Otter (see [`contrib/otter`](contrib/otter)) when you need lock-free scaling — `coherent`'s
+invalidation layer is unchanged.
 
 ## Status
 

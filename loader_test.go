@@ -36,7 +36,7 @@ func TestGetOrLoadSingleflight(t *testing.T) {
 	release := make(chan struct{})
 	lc := NewLoadingCache[string, int](
 		NewMemCache[string, int](Options[string, int]{}),
-		func(_ context.Context, key string) (int, error) {
+		func(_ context.Context, _ string) (int, error) {
 			calls.Add(1)
 			<-release // hold the load open so concurrent callers coalesce
 			return 42, nil

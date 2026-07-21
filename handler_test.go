@@ -29,7 +29,7 @@ func TestHandlerEvictsKey(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go h.Run(ctx)
+	go func() { _ = h.Run(ctx) }()
 
 	src.Publish(Event[string]{Key: "a", EventType: "updated", TimestampMs: 10})
 	eventually(t, func() bool {
@@ -51,7 +51,7 @@ func TestHandlerClearsOnCacheClear(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go h.Run(ctx)
+	go func() { _ = h.Run(ctx) }()
 
 	src.Publish(Event[string]{IsCacheClear: true, TimestampMs: 20})
 	eventually(t, func() bool { return cache.Len() == 0 })

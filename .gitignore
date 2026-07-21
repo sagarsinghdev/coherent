@@ -13,3 +13,8 @@ coverage.html
 .DS_Store
 .idea/
 .vscode/
+
+# Local-only working docs (build handoff + assistant context); never published
+/CLAUDE.md
+/PROGRESS.md
+/.claude/

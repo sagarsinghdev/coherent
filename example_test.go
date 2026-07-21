@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/OWNER/coherent"
+	"github.com/sagarsinghdev/coherent"
 )
 
 // Example shows a consumer wiring: a local cache kept coherent by a Handler that
@@ -23,7 +23,7 @@ func Example() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go handler.Run(ctx)
+	go func() { _ = handler.Run(ctx) }()
 
 	cache.Set("user:42", "Ada")
 	fmt.Println(get(cache, "user:42"))

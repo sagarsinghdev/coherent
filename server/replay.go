@@ -56,7 +56,7 @@ func (s *ReplayService) Replay(
 	if err != nil {
 		return err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	gap, err := r.Seek(ctx, resumeAfterMs)
 	if err != nil {
