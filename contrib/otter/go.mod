@@ -15,7 +15,3 @@ require (
 	github.com/stretchr/testify v1.11.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-// During in-repo development the core module is consumed from the tree. When
-// depending on a tagged release, drop this replace and rely on the require above.
-replace github.com/sagarsinghdev/coherent => ../..
