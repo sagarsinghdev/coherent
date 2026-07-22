@@ -4,7 +4,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/sagarsinghdev/coherent.svg)](https://pkg.go.dev/github.com/sagarsinghdev/coherent)
 [![CI](https://github.com/sagarsinghdev/coherent/actions/workflows/ci.yml/badge.svg)](https://github.com/sagarsinghdev/coherent/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/sagarsinghdev/coherent)](https://goreportcard.com/report/github.com/sagarsinghdev/coherent)
+[![Release](https://img.shields.io/github/v/tag/sagarsinghdev/coherent?filter=v*&label=release&color=00ADD8)](https://github.com/sagarsinghdev/coherent/tags)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 > Go has great **local** caches (Otter, Ristretto) and great **distributed** caches (Redis).
@@ -73,17 +73,17 @@ v, err := lc.GetOrLoad(ctx, "user:42")
 
 ```mermaid
 flowchart LR
-  subgraph Owner service
-    WR[write/mutation] --> PUB[(Redis Pub/Sub fan-out)]
+  subgraph owner["Owner service"]
+    WR[write/mutation] --> PUB[("Redis Pub/Sub fan-out")]
     PUB --> CM[server.ConnectionManager]
     CM --> GS[gRPC stream]
   end
-  subgraph Consumer process (coherent)
+  subgraph consumer["Consumer process (coherent)"]
     GS --> SRC[InvalidationSource]
-    SRC --> H[Handler: EvictKey / Clear]
+    SRC --> H["Handler: EvictKey / Clear"]
     H --> LC[(Cache)]
     APP[app.Get] -->|hit| LC
-    LC -.->|miss → Loader → Set| OWN[fetch from owner]
+    LC -.->|"miss → Loader → Set"| OWN[fetch from owner]
   end
 ```
 
