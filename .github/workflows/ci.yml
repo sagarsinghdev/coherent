@@ -16,12 +16,12 @@ jobs:
       fail-fast: false
       matrix:
         # The core module is zero-dependency; the optional transports/backends
-        # are separate modules that depend on it via a replace directive.
+        # are separate modules that depend on the tagged core release.
         module: ['.', 'contrib/otter', 'examples/grpc']
         go: ['1.24', 'stable'] # 'stable' always tracks the latest Go release
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go }}
           cache: true
@@ -47,13 +47,13 @@ jobs:
       matrix:
         module: ['.', 'contrib/otter', 'examples/grpc']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: 'stable'
           cache: true
           cache-dependency-path: ${{ matrix.module }}/go.mod
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          version: v2.12.2
           working-directory: ${{ matrix.module }}
