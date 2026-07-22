@@ -109,6 +109,19 @@ broadcast) and `ReplayService` (watermark replay) — for building the service t
 On the owner side, a subscribe handler must **register the consumer before starting replay**, then
 drain events buffered during replay, then stream live — so no event is lost in the reconnect gap.
 
+### Replay on reconnect
+
+When a consumer reconnects it sends its last-seen watermark, and the owner replays exactly the events
+after it — or sends a single cache-clear if the watermark predates the retained history (a *retention
+gap*). This is driven by the `RecordReader` seam, so **the library never owns your durable log**:
+
+- **Out of the box:** `server.MemLog` — a bounded, zero-dependency in-memory event log — makes replay
+  and retention-gap detection work immediately (great for single-writer owners, tests, small fleets).
+  The [`examples/grpc` reference server](examples/grpc) uses it; the round trip is covered by tests.
+- **Durable / cross-restart:** implement `RecordReader` over your log (for example Kafka:
+  `offsetsForTimes` to seek by watermark, retention gap when the earliest offset is newer than the
+  watermark). Nothing else changes — `RecordReader` is the only seam.
+
 ## Backends
 
 `MemCache` is the bundled default: a thread-safe LRU with optional TTL and Caffeine-style

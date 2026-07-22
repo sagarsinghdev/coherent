@@ -41,19 +41,24 @@ correctness across reconnects for free.
 ## Owner side
 
 ```go
-owner := refserver.New(256)
+owner := refserver.New(256, 4096) // per-consumer buffer, replay-log retention
 owner.Register(grpcServer)
 
 // After committing a mutation to the source of truth:
-owner.Publish(key, "updated") // broadcast to all connected consumers
+owner.Publish(key, "updated") // append to replay log + broadcast to consumers
 ```
 
-`refserver` is intentionally minimal: it fans invalidations out to locally-connected consumers with
-non-blocking sends and has **no durable replay**. Reconnecting consumers stay correct via the
-client-side clear-on-reconnect plus TTL. For production **watermark replay**, back a
-`server.ReplayService` with a `RecordReader` over your durable log (Kafka, etc.) and call `Replay`
-inside `Subscribe` *before* going live — register the live channel first, replay, drain buffered, then
-stream. See the [`server`](../../server) package docs for the ordering invariant.
+`refserver` does the full correctness sequence out of the box: it appends every event to an in-memory
+`server.MemLog` and, in `Subscribe`, **registers the live channel → replays everything after the
+consumer's watermark (or sends one cache-clear on a retention gap) → drains buffered → streams live**.
+So a consumer that reconnects with a watermark gets exactly what it missed — covered end-to-end by
+[`refserver/replay_test.go`](refserver/replay_test.go).
+
+`MemLog` retains a bounded number of recent events (fine for single-writer owners, tests, small
+fleets). For **durable, cross-restart** retention, replace the `MemLog`-backed `RecordReader` with one
+over your log — e.g. Kafka: `offsetsForTimes` to seek by watermark, and report a retention gap when the
+earliest available offset is newer than the requested watermark. Nothing else changes, because
+`RecordReader` is the only seam. See the [`server`](../../server) package docs.
 
 ## Regenerating the protobuf code
 

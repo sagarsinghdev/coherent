@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.0]
+
+Replay on reconnect now works out of the box.
+
+### Added
+- `server.MemLog`: a bounded, zero-dependency in-memory event log that implements the source side of
+  replay (a `RecordReader` with real retention and retention-gap detection). Makes watermark replay
+  work without any external log — swap it for a durable-log-backed `RecordReader` (e.g. Kafka) when you
+  need cross-restart retention.
+- `examples/grpc` reference server now performs the full `register → replay(from watermark) → drain →
+  live` sequence, backed by `MemLog`. End-to-end tests cover replay of missed events and the
+  retention-gap cache-clear.
+- Core test for graceful degradation: reads are still served from cache after the invalidation source
+  goes away.
+
+### Changed
+- **Breaking (examples/grpc):** `refserver.New` now takes `(bufSize, retention int)` — the second
+  argument is the replay-log capacity.
+
 ## [0.1.0]
 
 First public release.

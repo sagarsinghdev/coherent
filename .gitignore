@@ -18,3 +18,7 @@ coverage.html
 /CLAUDE.md
 /PROGRESS.md
 /.claude/
+
+# Local Go workspace (dev only; submodules ship depending on tagged core)
+/go.work
+/go.work.sum

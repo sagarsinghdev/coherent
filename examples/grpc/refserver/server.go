@@ -1,15 +1,18 @@
-// Package refserver is a minimal, in-memory reference implementation of the
+// Package refserver is a small, in-memory reference implementation of the
 // InvalidationService owner side. It shows how to wire coherent's server
-// primitives (server.ConnectionManager) behind the generated gRPC service so a
-// fleet of consumers stays coherent.
+// primitives — ConnectionManager for live fan-out and ReplayService over a MemLog
+// for watermark replay — behind the generated gRPC service so a fleet of
+// consumers stays coherent, with correct recovery across reconnects.
 //
-// It is intentionally small: it fans a published invalidation out to every
-// connected consumer with non-blocking sends. It has no durable log and therefore
-// no watermark replay — reconnecting consumers rely on the client-side
-// clear-on-reconnect (see the grpcsource package) plus TTL to self-heal. For
-// production replay, back a server.ReplayService with a RecordReader over your
-// durable log (Kafka, etc.) and call Replay inside Subscribe before going live;
-// see the server package docs.
+// The Subscribe handler follows the ordering invariant: it registers the
+// consumer's live channel first, replays everything after the consumer's
+// watermark (or sends one cache-clear on a retention gap), then streams live, so
+// no event is lost in the reconnect gap.
+//
+// Replay here is backed by an in-memory MemLog (bounded retention), which fits
+// single-writer owners, tests, and small fleets. For durable, cross-restart
+// replay, swap the MemLog-backed RecordReader for one over your durable log
+// (Kafka, etc.); nothing else changes, because RecordReader is the seam.
 package refserver
 
 import (
@@ -19,19 +22,29 @@ import (
 	"github.com/sagarsinghdev/coherent/examples/grpc/gen/coherentv1"
 	"github.com/sagarsinghdev/coherent/server"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 )
 
-// Server is an in-memory InvalidationService. The zero value is not usable; call
-// New.
+// Server is an in-memory InvalidationService with watermark replay. The zero
+// value is not usable; call New.
 type Server struct {
 	coherentv1.UnimplementedInvalidationServiceServer
 	mgr    *server.ConnectionManager[*coherentv1.InvalidationEvent]
+	log    *server.MemLog
+	replay *server.ReplayService
 	lastTS atomic.Int64
 }
 
-// New returns a Server whose per-consumer send buffers hold bufSize events.
-func New(bufSize int) *Server {
-	return &Server{mgr: server.NewConnectionManager[*coherentv1.InvalidationEvent](bufSize)}
+// New returns a Server whose per-consumer send buffers hold bufSize events and
+// whose replay log retains the newest retention events for reconnecting
+// consumers.
+func New(bufSize, retention int) *Server {
+	log := server.NewMemLog(retention)
+	return &Server{
+		mgr:    server.NewConnectionManager[*coherentv1.InvalidationEvent](bufSize),
+		log:    log,
+		replay: server.NewReplayService(func() (server.RecordReader, error) { return log.NewReader(), nil }),
+	}
 }
 
 // Register installs s on gs. Call before gs.Serve.
@@ -39,18 +52,41 @@ func (s *Server) Register(gs *grpc.Server) {
 	coherentv1.RegisterInvalidationServiceServer(gs, s)
 }
 
-// Subscribe streams invalidation events to one consumer. It registers the
-// consumer's live channel, then streams until the client disconnects or the
-// consumer is replaced. This reference server has no replay, so ResumeAfterMs is
-// accepted but not acted on; correctness across the reconnect gap is provided by
-// the client's clear-on-reconnect.
+// Subscribe streams invalidation events to one consumer:
+//
+//  1. register the live channel first (so nothing published mid-replay is lost),
+//  2. replay events after req.ResumeAfterMs — or send one cache-clear if the
+//     watermark predates the retained history (retention gap),
+//  3. drain events buffered during replay and stream live.
+//
+// A fresh consumer (ResumeAfterMs == 0) skips replay; its client emits a
+// clear-on-connect instead.
 func (s *Server) Subscribe(req *coherentv1.SubscribeRequest, stream coherentv1.InvalidationService_SubscribeServer) error {
 	id := req.GetSubscriberId()
-	ch := s.mgr.Register(id)
+	ch := s.mgr.Register(id) // (1) register BEFORE replay
 	defer s.mgr.Deregister(id)
 
 	ctx := stream.Context()
-	for {
+
+	if req.GetResumeAfterMs() > 0 { // (2) replay what was missed
+		err := s.replay.Replay(ctx, req.GetResumeAfterMs(),
+			func(raw []byte) error {
+				ev := &coherentv1.InvalidationEvent{}
+				if err := proto.Unmarshal(raw, ev); err != nil {
+					return err
+				}
+				return stream.Send(ev)
+			},
+			func() error {
+				return stream.Send(&coherentv1.InvalidationEvent{IsCacheClear: true})
+			},
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	for { // (3) drain buffered + stream live
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -65,23 +101,29 @@ func (s *Server) Subscribe(req *coherentv1.SubscribeRequest, stream coherentv1.I
 	}
 }
 
-// Publish broadcasts a key-level invalidation to all connected consumers and
-// returns the strictly-increasing timestamp (Unix ms) assigned to it. Call it
-// after committing a mutation to the source of truth.
+// Publish broadcasts a key-level invalidation to all connected consumers, appends
+// it to the replay log, and returns the strictly-increasing timestamp (Unix ms)
+// assigned to it. Call it after committing a mutation to the source of truth.
 func (s *Server) Publish(key, eventType string) int64 {
-	ts := s.nextTS()
-	s.mgr.Broadcast(&coherentv1.InvalidationEvent{
-		Key:         key,
-		EventType:   eventType,
-		TimestampMs: ts,
-	})
-	return ts
+	return s.emit(&coherentv1.InvalidationEvent{Key: key, EventType: eventType})
 }
 
-// PublishClear broadcasts a cache-clear signal to all connected consumers.
+// PublishClear broadcasts a cache-clear signal and records it in the replay log.
 func (s *Server) PublishClear() int64 {
+	return s.emit(&coherentv1.InvalidationEvent{IsCacheClear: true})
+}
+
+// emit assigns a strictly-increasing timestamp, appends the event to the replay
+// log, then broadcasts it. Append-before-broadcast guarantees that any event a
+// reconnecting consumer might observe live is already replayable — the other half
+// of register-before-replay, together closing the reconnect gap.
+func (s *Server) emit(ev *coherentv1.InvalidationEvent) int64 {
 	ts := s.nextTS()
-	s.mgr.Broadcast(&coherentv1.InvalidationEvent{IsCacheClear: true, TimestampMs: ts})
+	ev.TimestampMs = ts
+	if raw, err := proto.Marshal(ev); err == nil {
+		s.log.Append(server.LogRecord{Payload: raw, TimestampMs: ts})
+	}
+	s.mgr.Broadcast(ev)
 	return ts
 }
 

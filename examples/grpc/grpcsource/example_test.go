@@ -26,7 +26,7 @@ func Example() {
 
 	// Owner side: a reference InvalidationService over an in-process listener.
 	lis := bufconn.Listen(1 << 20)
-	owner := refserver.New(64)
+	owner := refserver.New(64, 1024)
 	gs := grpc.NewServer()
 	owner.Register(gs)
 	go func() { _ = gs.Serve(lis) }()

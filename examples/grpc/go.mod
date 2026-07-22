@@ -5,7 +5,7 @@ module github.com/sagarsinghdev/coherent/examples/grpc
 go 1.24
 
 require (
-	github.com/sagarsinghdev/coherent v0.1.0
+	github.com/sagarsinghdev/coherent v0.2.0
 	google.golang.org/grpc v1.71.0
 	google.golang.org/protobuf v1.36.6
 )
